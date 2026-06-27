@@ -57,13 +57,22 @@ public class CustomStaticRouter : StaticRouter
                 ) => await HandleAssortsRoute()
             ),
             new RouteAction(
-                 "/MoreCheckmarksRoutes/traderNames",
+                 "/MoreCheckmarksRoutes/items",
                  static async (
                     url,
                     info,
                     sessionId,
                     output
-                ) => await HandleTraderNamesRoute()
+                ) => await HandleItemsRoute()
+            ),
+            new RouteAction(
+                 "/MoreCheckmarksRoutes/locales",
+                 static async (
+                    url,
+                    info,
+                    sessionId,
+                    output
+                ) => await HandleLocalesRoute()
             ),
             new RouteAction(
                 "/MoreCheckmarksRoutes/productions",
@@ -107,16 +116,30 @@ public class CustomStaticRouter : StaticRouter
         }
     }
 
-    private static ValueTask<string> HandleTraderNamesRoute()
+    private static ValueTask<string> HandleItemsRoute()
     {
         try
         {
-            var names = server!.HandleTraderNames();
-            return new ValueTask<string>(jsonUtil!.Serialize(names!)!);
+            var items = server!.HandleItems();
+            return new ValueTask<string>(jsonUtil!.Serialize(items!)!);
         }
         catch
         {
-            logger?.Error("Exception when handling TraderNamesRoute!");
+            logger?.Error("Exception when handling ItemsRoute!");
+            return new ValueTask<string>(httpResponseUtil!.NullResponse());
+        }
+    }
+
+    private static ValueTask<string> HandleLocalesRoute()
+    {
+        try
+        {
+            var locales = server!.HandleLocales();
+            return new ValueTask<string>(jsonUtil!.Serialize(locales!)!);
+        }
+        catch
+        {
+            logger?.Error("Exception when handling LocalesRoute!");
             return new ValueTask<string>(httpResponseUtil!.NullResponse());
         }
     }

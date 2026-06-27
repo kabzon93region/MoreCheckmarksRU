@@ -30,7 +30,7 @@ public record ModMetadata : AbstractModMetadata
     public override string Name { get; init; } = "MoreCheckmarksBackend";
     public override string Author { get; init; } = "VIP";
     public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("2.1.1");
+    public override SemanticVersioning.Version Version { get; init; } = new("2.1.0");
     public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
 
     public override List<string>? Incompatibilities { get; init; }
@@ -43,10 +43,12 @@ public record ModMetadata : AbstractModMetadata
 [Injectable(InjectionType = InjectionType.Singleton, TypePriority = OnLoadOrder.PostDBModLoader + 90000)]
 public class MoreCheckmarksServer(
     ISptLogger<MoreCheckmarksServer> logger,
+    // DynamicRouter dynamicRouter,
     CustomStaticRouter customStaticRouter,
     ProfileHelper profileHelper,
     QuestHelper questHelper,
     ConfigServer configServer,
+    // TraderHelper traderHelper,
     DatabaseServer databaseServer,
     FenceService fenceService
     ) : IOnLoad
@@ -63,7 +65,7 @@ public class MoreCheckmarksServer(
 
     public Quest[] HandleQuests(MongoId sessionId)
     {
-        logger.Debug("MoreCheckmarks making quest data request");
+        logger.Info("MoreCheckmarks making quest data request");
         var quests = new List<Quest>();
         var allQuests = questHelper.GetQuestsFromDb();
         var profile = profileHelper.GetPmcProfile(sessionId);
@@ -95,7 +97,7 @@ public class MoreCheckmarksServer(
         {
             // New profile with no quest data - return ALL quests for their side
             // (since they haven't completed any, all quests should show checkmarks)
-            logger.Debug("MoreCheckmarks: No quest data (new profile). Returning all quests as incomplete.");
+            logger.Info("MoreCheckmarks: No quest data (new profile). Returning all quests as incomplete.");
             foreach (var quest in allQuests)
             {
                 if (!QuestIsForOtherSide(profileSide, quest.Id))
@@ -103,7 +105,7 @@ public class MoreCheckmarksServer(
                     quests.Add(quest);
                 }
             }
-            logger.Debug($"Got {quests.Count} quests for MoreCheckmarks (all quests for new profile)");
+            logger.Info($"Got {quests.Count} quests for MoreCheckmarks (all quests for new profile)");
             return quests.ToArray();
         }
 
@@ -128,66 +130,75 @@ public class MoreCheckmarksServer(
                 quests.Add(quest);
             }
         }
-        logger.Debug($"Got {quests.Count} quests for MoreCheckmarks");
+        logger.Info($"Got {quests.Count} quests for MoreCheckmarks");
         return quests.ToArray();
-    }
-
-    private List<(string name, TraderAssort assort)> GetOrderedTraderAssorts()
-    {
-        var result = new List<(string name, TraderAssort assort)>();
-        var fenceAssorts = fenceService.GetRawFenceAssorts();
-        var traderFields = typeof(Traders).GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
-        foreach (var traderField in traderFields)
-        {
-            var traderValue = traderField.GetValue(null) as MongoId?;
-            if (traderValue!.Value == Traders.FENCE && fenceAssorts != null)
-            {
-                result.Add(("Fence", fenceAssorts));
-                continue;
-            }
-            var traderDBEntry = databaseServer.GetTables().Traders[traderValue!.Value];
-            if (traderDBEntry != null && traderDBEntry.Assort != null)
-            {
-                var name = traderDBEntry.Base?.Nickname ?? traderField.Name;
-                result.Add((name, traderDBEntry.Assort));
-            }
-        }
-        return result;
     }
 
     public TraderAssort[]? HandleAssorts()
     {
-        logger.Debug("MoreCheckmarks making trader assort data request");
+        logger.Info("MoreCheckmarks making trader assort data request");
+        var assortsList = new List<TraderAssort>();
         try
         {
-            var ordered = GetOrderedTraderAssorts();
-            logger.Debug($"Finished fetching {ordered.Count} assorts for MoreCheckmarks");
-            return ordered.Select(x => x.assort).ToArray();
+            var fenceAssorts = fenceService.GetRawFenceAssorts();
+            Type traderType = typeof(Traders);
+            var traderFields = traderType.GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+            foreach (var traderField in traderFields)
+            {
+                var traderValue = traderField.GetValue(null) as MongoId?;
+                if (traderValue!.Value == Traders.FENCE && fenceAssorts != null)
+                {
+                    assortsList.Add(fenceAssorts);
+                    continue;
+                }
+                var traderDBEntry = databaseServer.GetTables().Traders[traderValue!.Value];
+                if (traderDBEntry != null && traderDBEntry.Assort != null)
+                {
+                    assortsList.Add(traderDBEntry.Assort);
+                }
+            }
         }
         catch
         {
             logger.Error("Exception caught when trying to generate assorts.");
             return null;
         }
+
+        logger.Info($"Finished fetching {assortsList.Count} assorts for MoreCheckmarks");
+        return assortsList.ToArray();
     }
 
-    public string[]? HandleTraderNames()
+    public Dictionary<MongoId, TemplateItem>? HandleItems()
     {
-        logger.Debug("MoreCheckmarks making trader names request");
+        logger.Info("MoreCheckmarks making item data request");
         try
         {
-            return GetOrderedTraderAssorts().Select(x => x.name).ToArray();
+            return databaseServer.GetTables().Templates.Items;
         }
         catch
         {
-            logger.Error("Exception caught when trying to generate trader names.");
+            logger.Error("Could not get tables from database when trying to do the item data request.");
+            return null;
+        }
+    }
+
+    public LocaleBase? HandleLocales()
+    {
+        logger.Info("MoreCheckmarks making locale request");
+        try
+        {
+            return databaseServer.GetTables().Locales;
+        }
+        catch
+        {
+            logger.Error("Could not get tables from database when trying to get locales.");
             return null;
         }
     }
 
     public HideoutProductionData? HandleProductions()
     {
-        logger.Debug("MoreCheckmarks making productions request");
+        logger.Info("MoreCheckmarks making productions request");
         try {
             return databaseServer.GetTables().Hideout.Production;
         }
